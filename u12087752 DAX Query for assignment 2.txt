@@ -1,0 +1,302 @@
+#### stacked bar graph. 
+#We compare the total fare for economy and none economy  from April to October
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[Month],
+			'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[MonthNo],
+			'itineraries'[isBasicEconomy],
+			"SumtotalFare", CALCULATE(SUM('itineraries'[totalFare]))
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(
+			201,
+			SUMMARIZE(
+				__DS0Core,
+				'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[Month],
+				'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[MonthNo]
+			),
+			'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[MonthNo],
+			1,
+			'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[Month],
+			1
+		)
+
+	VAR __DS0SecondaryBase = 
+		SUMMARIZE(__DS0Core, 'itineraries'[isBasicEconomy])
+
+	VAR __DS0Secondary = 
+		TOPN(62, __DS0SecondaryBase, 'itineraries'[isBasicEconomy], 1)
+
+	VAR __DS0BodyLimited = 
+		NATURALLEFTOUTERJOIN(
+			__DS0PrimaryWindowed,
+			SUBSTITUTEWITHINDEX(
+				__DS0Core,
+				"ColumnIndex",
+				__DS0Secondary,
+				'itineraries'[isBasicEconomy],
+				ASC
+			)
+		)
+
+EVALUATE
+	__DS0Secondary
+
+ORDER BY
+	'itineraries'[isBasicEconomy]
+
+EVALUATE
+	__DS0BodyLimited
+
+ORDER BY
+	'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[MonthNo],
+	'LocalDateTable_ffcb6855-ecb8-4e46-bee7-83febb8dbfe9'[Month],
+	[ColumnIndex]
+
+
+
+##this categorises the sum of seats remaining into months.
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+			"SumseatsRemaining", CALCULATE(SUM('itineraries'[seatsRemaining]))
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(
+			1001,
+			__DS0Core,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+			1,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+			1
+		)
+
+EVALUATE
+	__DS0PrimaryWindowed
+
+ORDER BY
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month]
+
+##Compare economy and none economy distance, and duration of travel
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			ROLLUPADDISSUBTOTAL('itineraries'[isBasicEconomy], "IsGrandTotalRowTotal"),
+			"SumtravelDuration", CALCULATE(SUM('itineraries'[travelDuration])),
+			"SumtotalTravelDistance", CALCULATE(SUM('itineraries'[totalTravelDistance]))
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(
+			502,
+			__DS0Core,
+			[IsGrandTotalRowTotal],
+			0,
+			[SumtravelDuration],
+			1,
+			'itineraries'[isBasicEconomy],
+			1
+		)
+
+EVALUATE
+	__DS0PrimaryWindowed
+
+ORDER BY
+	[IsGrandTotalRowTotal] DESC, [SumtravelDuration], 'itineraries'[isBasicEconomy]
+
+##comparing the distance travelled (starting and end aiport) to the total fare prices
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			ROLLUPADDISSUBTOTAL(
+				ROLLUPGROUP('itineraries'[startingAirport], 'itineraries'[destinationAirport]), "IsGrandTotalRowTotal"
+			),
+			"SumtotalFare", CALCULATE(SUM('itineraries'[totalFare]))
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(
+			502,
+			__DS0Core,
+			[IsGrandTotalRowTotal],
+			0,
+			[SumtotalFare],
+			1,
+			'itineraries'[startingAirport],
+			1,
+			'itineraries'[destinationAirport],
+			1
+		)
+
+EVALUATE
+	__DS0PrimaryWindowed
+
+ORDER BY
+	[IsGrandTotalRowTotal] DESC,
+	[SumtotalFare],
+	'itineraries'[startingAirport],
+	'itineraries'[destinationAirport]
+
+
+####The scatter chart studies the relationship between travel distance and total fare
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZE('itineraries', 'itineraries'[totalTravelDistance], 'itineraries'[totalFare])
+
+	VAR __DS0IntersectionCount = CALCULATE(COUNTROWS(__DS0Core))
+
+	VAR __DS0BodyOverlappingPointsSample = 
+		SAMPLECARTESIANPOINTSBYCOVER(3500, __DS0Core, 'itineraries'[totalTravelDistance], 'itineraries'[totalFare])
+
+EVALUATE
+	ROW(
+	"DS0IntersectionCount", __DS0IntersectionCount
+)
+
+EVALUATE
+	__DS0BodyOverlappingPointsSample
+
+ORDER BY
+	'itineraries'[totalTravelDistance], 'itineraries'[totalFare]
+
+
+
+#### scatter comparing total fare and number of flights per aiport
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			'itineraries'[startingAirport],
+			"Count_flights_per_airport", 'itineraries'[Count flights per airport],
+			"SumtotalFare", CALCULATE(SUM('itineraries'[totalFare]))
+		)
+
+	VAR __DS0IntersectionCount = CALCULATE(COUNTROWS(__DS0Core))
+
+	VAR __DS0BodyOverlappingPointsSample = 
+		SAMPLECARTESIANPOINTSBYCOVER(3500, __DS0Core, [Count_flights_per_airport], [SumtotalFare])
+
+EVALUATE
+	ROW(
+	"DS0IntersectionCount", __DS0IntersectionCount
+)
+
+EVALUATE
+	__DS0BodyOverlappingPointsSample
+
+ORDER BY
+	'itineraries'[startingAirport]
+
+
+##Sunburst chart
+// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+			ROLLUPADDISSUBTOTAL(
+				ROLLUPGROUP(
+					'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+					'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo]
+				), "IsDM0Total",
+				'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Day], "IsDM1Total"
+			),
+			"AveragetotalFare", CALCULATE(AVERAGE('itineraries'[totalFare]))
+		)
+
+	VAR __DS0CoreTableByDM0 = 
+		SELECTCOLUMNS(
+			KEEPFILTERS(
+				FILTER(KEEPFILTERS(__DS0Core), AND([IsDM0Total] = TRUE, [IsDM1Total] = TRUE))
+			),
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+			"SortBy_DM0_0", [AveragetotalFare]
+		)
+
+	VAR __DS0CoreTableByDM1 = 
+		SELECTCOLUMNS(
+			KEEPFILTERS(
+				FILTER(KEEPFILTERS(__DS0Core), AND([IsDM0Total] = FALSE, [IsDM1Total] = TRUE))
+			),
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+			"IsDM0Total", [IsDM0Total],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+			"SortBy_DM1_0", [AveragetotalFare]
+		)
+
+	VAR __DS0PrimaryWithSortColumns = 
+		NATURALLEFTOUTERJOIN(
+			NATURALLEFTOUTERJOIN(
+				__DS0Core,
+				__DS0CoreTableByDM0
+			),
+			__DS0CoreTableByDM1
+		)
+
+	VAR __DS0PrimaryWithSortColumnsOutputTotals = 
+		SELECTCOLUMNS(
+			KEEPFILTERS(
+				FILTER(
+					KEEPFILTERS(__DS0PrimaryWithSortColumns),
+					AND([IsDM0Total] = FALSE, [IsDM1Total] = FALSE)
+				)
+			),
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+			"SortBy_DM0_0", [SortBy_DM0_0],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+			"SortBy_DM1_0", [SortBy_DM1_0],
+			"'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Day]", 'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Day],
+			"AveragetotalFare", [AveragetotalFare]
+		)
+
+	VAR __DS0BodyLimited = 
+		TOPN(
+			30002,
+			__DS0PrimaryWithSortColumnsOutputTotals,
+			[SortBy_DM0_0],
+			0,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+			1,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+			1,
+			[SortBy_DM1_0],
+			0,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+			1,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+			1,
+			[AveragetotalFare],
+			0,
+			'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Day],
+			1
+		)
+
+EVALUATE
+	__DS0BodyLimited
+
+ORDER BY
+	[SortBy_DM0_0] DESC,
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[QuarterNo],
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Quarter],
+	[SortBy_DM1_0] DESC,
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[MonthNo],
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Month],
+	[AveragetotalFare] DESC,
+	'LocalDateTable_1c92469e-c4d7-4fb9-ad32-31528b5e1a99'[Day]
